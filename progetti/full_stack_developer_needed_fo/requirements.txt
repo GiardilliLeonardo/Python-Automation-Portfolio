@@ -1,0 +1,1 @@
+# Nessuna libreria esterna richiesta (tutti i moduli appartengono alla libreria standard di Python)
