@@ -1,0 +1,1 @@
+# Nessuna dipendenza esterna richiesta (tutti i moduli fanno parte della libreria standard di Python)
