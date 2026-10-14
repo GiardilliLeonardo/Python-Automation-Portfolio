@@ -1,136 +1,209 @@
 # Task: Build an AI Agent with RAG for Business Workflow Automation.
 
-import os
 import json
-from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+import os
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional
 import numpy as np
-import pandas as pd
 from openai import OpenAI
+from pydantic import BaseModel, Field
 
-# ==============================================================================
-# CONFIGURATION & DATA MODELS
-# ==============================================================================
 
-@dataclass
-class WorkflowConfig:
-    openai_api_key: str = field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))
-    model_name: str = "gpt-4o-mini"
-    embedding_model: str = "text-embedding-3-small"
-    input_excel_path: str = "business_invoices.xlsx"
-    output_excel_path: str = "processed_business_invoices.xlsx"
-    similarity_top_k: int = 2
+# --- Configuration & Data Models ---
 
 @dataclass
-class SOPDocument:
+class Document:
     doc_id: str
-    title: str
     content: str
+    metadata: Dict[str, Any]
     embedding: Optional[List[float]] = None
 
-# ==============================================================================
-# RAG ENGINE (IN-MEMORY VECTOR STORE)
-# ==============================================================================
 
-class LightweightRAGEngine:
-    def __init__(self, client: OpenAI, model: str):
+class WorkflowTicket(BaseModel):
+    ticket_id: str
+    customer_id: str
+    query: str
+    transaction_amount: float
+    currency: str = "USD"
+
+
+class AgentActionResponse(BaseModel):
+    status: str
+    action_taken: str
+    details: Dict[str, Any]
+
+
+# --- In-Memory Vector Store for RAG ---
+
+class SimpleVectorStore:
+    def __init__(self, client: OpenAI, model: str = "text-embedding-3-small"):
         self.client = client
-        self.embedding_model = model
-        self.documents: List[SOPDocument] = []
-        self._embeddings_matrix: Optional[np.ndarray] = None
+        self.model = model
+        self.documents: List[Document] = []
 
-    def add_documents(self, docs: List[SOPDocument]) -> None:
-        if not docs:
-            return
-
-        texts_to_embed = [f"{d.title}: {d.content}" for d in docs]
+    def _get_embedding(self, text: str) -> List[float]:
         response = self.client.embeddings.create(
-            input=texts_to_embed,
-            model=self.embedding_model
+            input=text,
+            model=self.model
         )
-        for i, item in enumerate(response.data):
-            docs[i].embedding = item.embedding
+        return response.data[0].embedding
 
-        self.documents.extend(docs)
-        embeddings = [doc.embedding for doc in self.documents if doc.embedding is not None]
-        self._embeddings_matrix = np.array(embeddings, dtype=np.float32)
+    def add_documents(self, docs: List[Document]) -> None:
+        for doc in docs:
+            if not doc.embedding:
+                doc.embedding = self._get_embedding(doc.content)
+            self.documents.append(doc)
 
-    def search(self, query: str, top_k: int = 2) -> List[SOPDocument]:
-        if self._embeddings_matrix is None or len(self.documents) == 0:
+    def search(self, query: str, top_k: int = 2) -> List[Document]:
+        if not self.documents:
             return []
 
-        query_response = self.client.embeddings.create(
-            input=[query],
-            model=self.embedding_model
-        )
-        query_vector = np.array(query_response.data[0].embedding, dtype=np.float32)
+        query_embedding = np.array(self._get_embedding(query))
+        scored_docs = []
 
-        # Cosine similarity calculation
-        norm_matrix = np.linalg.norm(self._embeddings_matrix, axis=1)
-        norm_query = np.linalg.norm(query_vector)
-        similarities = np.dot(self._embeddings_matrix, query_vector) / (norm_matrix * norm_query + 1e-10)
+        for doc in self.documents:
+            if doc.embedding is None:
+                continue
+            doc_emb = np.array(doc.embedding)
+            norm_q = np.linalg.norm(query_embedding)
+            norm_d = np.linalg.norm(doc_emb)
+            
+            if norm_q == 0 or norm_d == 0:
+                similarity = 0.0
+            else:
+                similarity = float(np.dot(query_embedding, doc_emb) / (norm_q * norm_d))
+            scored_docs.append((similarity, doc))
 
-        top_k = min(top_k, len(self.documents))
-        top_indices = np.argsort(similarities)[::-1][:top_k]
-        return [self.documents[idx] for idx in top_indices]
+        scored_docs.sort(key=lambda x: x[0], reverse=True)
+        return [doc for _, doc in scored_docs[:top_k]]
 
-# ==============================================================================
-# BUSINESS WORKFLOW AUTOMATION AGENT
-# ==============================================================================
 
-class InvoiceResolutionAgent:
-    def __init__(self, config: WorkflowConfig):
-        self.config = config
-        self.client = OpenAI(api_key=config.openai_api_key)
-        self.rag = LightweightRAGEngine(self.client, config.embedding_model)
-        self._initialize_knowledge_base()
+# --- External API Integrations (Business Tools) ---
 
-    def _initialize_knowledge_base(self) -> None:
-        sop_data = [
-            SOPDocument(
-                doc_id="SOP-001",
-                title="Small Balance Write-offs",
-                content="Discrepancies under $25.00 can be automatically written off without manager approval. Status: APPROVED."
-            ),
-            SOPDocument(
-                doc_id="SOP-002",
-                title="Damaged Goods Protocol",
-                content="If damage is reported by client, request RMA documentation if invoice exceeds $500. Under $500, issue credit memo instantly. Status: CREDIT_PENDING."
-            ),
-            SOPDocument(
-                doc_id="SOP-003",
-                title="Service Delay Compensation",
-                content="For late delivery issues, apply a mandatory 10% penalty credit up to a maximum of $200. Status: ESCALATED."
-            ),
-            SOPDocument(
-                doc_id="SOP-004",
-                title="Fraud and Duplicate Billing",
-                content="Flag suspected duplicate charges or unverified vendor requests immediately to compliance. Status: REJECTED."
-            )
+class ExternalServicesAPI:
+    """Mock integration with external ERP/Billing APIs."""
+
+    @staticmethod
+    def execute_refund(customer_id: str, amount: float, reason: str) -> Dict[str, Any]:
+        return {
+            "status": "SUCCESS",
+            "transaction_id": f"tx_ref_{customer_id[:4]}_{int(amount)}",
+            "amount_refunded": amount,
+            "reason": reason
+        }
+
+    @staticmethod
+    def escalate_ticket(ticket_id: str, department: str, priority: str) -> Dict[str, Any]:
+        return {
+            "status": "ESCALATED",
+            "ticket_id": ticket_id,
+            "assigned_queue": department,
+            "priority": priority
+        }
+
+
+# --- RAG-Driven Business Automation Agent ---
+
+class BusinessWorkflowAgent:
+    def __init__(self, openai_client: OpenAI, vector_store: SimpleVectorStore, model: str = "gpt-4o"):
+        self.client = openai_client
+        self.vector_store = vector_store
+        self.model = model
+        self.tools_schema = self._init_tools_schema()
+        self.available_tools: Dict[str, Callable] = {
+            "execute_refund": ExternalServicesAPI.execute_refund,
+            "escalate_ticket": ExternalServicesAPI.escalate_ticket,
+        }
+
+    def _init_tools_schema(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "execute_refund",
+                    "description": "Processes an automated monetary refund to the customer according to policy.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "customer_id": {"type": "string", "description": "Customer identifier"},
+                            "amount": {"type": "number", "description": "Refund amount"},
+                            "reason": {"type": "string", "description": "Policy ground for refund"}
+                        },
+                        "required": ["customer_id", "amount", "reason"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "escalate_ticket",
+                    "description": "Escalates complex requests or out-of-policy disputes to a human department.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "ticket_id": {"type": "string", "description": "The support ticket ID"},
+                            "department": {"type": "string", "description": "Target team (e.g., 'Finance', 'Legal', 'L2_Support')"},
+                            "priority": {"type": "string", "enum": ["low", "medium", "high", "critical"]}
+                        },
+                        "required": ["ticket_id", "department", "priority"]
+                    }
+                }
+            }
         ]
-        self.rag.add_documents(sop_data)
 
-    def process_invoice_dispute(self, row: pd.Series) -> Dict[str, Any]:
-        dispute_query = (
-            f"Vendor: {row.get('Vendor', 'Unknown')}, "
-            f"Amount: {row.get('DiscrepancyAmount', 0.0)}, "
-            f"Reason: {row.get('DisputeReason', 'N/A')}"
-        )
-        relevant_docs = self.rag.search(dispute_query, top_k=self.config.similarity_top_k)
+    def process_ticket(self, ticket: WorkflowTicket) -> AgentActionResponse:
+        # Step 1: RAG Retrieval - Fetch authoritative enterprise policy
+        retrieved_docs = self.vector_store.search(ticket.query, top_k=2)
+        context = "\n---\n".join([d.content for d in retrieved_docs]) if retrieved_docs else "No specific policy retrieved."
 
-        context_str = "\n".join([f"- [{doc.doc_id}] {doc.title}: {doc.content}" for doc in relevant_docs])
-
+        # Step 2: System prompt construction
         system_prompt = (
-            "You are an enterprise operations resolution agent. Your role is to resolve billing discrepancies.\n"
-            "Analyze the invoice data and follow internal SOPs strictly.\n"
-            "Return valid JSON only matching this schema:\n"
-            "{\n"
-            '  "decision_status": "APPROVED" | "CREDIT_PENDING" | "ESCALATED" | "REJECTED",\n'
-            '  "action_taken": "Detailed explanation of the action taken",\n'
-            '  "policy_applied": "ID of SOP applied",\n'
-            '  "financial_adjustment": float\n'
-            "}"
+            "You are an autonomous enterprise operations agent. "
+            "Use the provided Policy Context to decide actions on incoming business requests.\n"
+            "Strictly adhere to thresholds, SLA conditions, and operational constraints.\n\n"
+            f"Policy Context:\n{context}"
         )
 
         user_prompt = (
-            f"RELEVANT SOP POLICIES:\n{context_str}\n\
+            f"Process the following ticket:\n"
+            f"Ticket ID: {ticket.ticket_id}\n"
+            f"Customer ID: {ticket.customer_id}\n"
+            f"Query: {ticket.query}\n"
+            f"Transaction Amount: {ticket.transaction_amount} {ticket.currency}"
+        )
+
+        # Step 3: LLM Inference with Function Calling
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            tools=self.tools_schema,
+            tool_choice="auto"
+        )
+
+        response_message = response.choices[0].message
+
+        # Step 4: Handle tool calls or default response
+        if response_message.tool_calls:
+            tool_call = response_message.tool_calls[0]
+            function_name = tool_call.function.name
+            function_args = json.loads(tool_call.function.arguments)
+
+            if function_name in self.available_tools:
+                tool_to_call = self.available_tools[function_name]
+                execution_result = tool_to_call(**function_args)
+                return AgentActionResponse(
+                    status="COMPLETED",
+                    action_taken=function_name,
+                    details=execution_result
+                )
+
+        return AgentActionResponse(
+            status="MANUAL_REVIEW_REQUIRED",
+            action_taken="none",
+            details={"message": response_message.content or "No action could be determined automatically."}
+        )
