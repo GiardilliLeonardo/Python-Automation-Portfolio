@@ -1,1 +1,1 @@
-# Nessuna libreria esterna richiesta (tutti i moduli appartengono alla libreria standard di Python)
+# Nessuna libreria esterna richiesta (utilizza solo moduli della libreria standard di Python)
