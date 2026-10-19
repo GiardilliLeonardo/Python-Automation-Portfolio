@@ -1,55 +1,52 @@
 # Task: Python Script assistance
 
-import os
-import shutil
-import argparse
+import requests
+from bs4 import BeautifulSoup
+import csv
 import logging
-from pathlib import Path
+import time
+from typing import List, Dict, Optional
 
+# Configurazione del logging professionale per il debug e il monitoraggio
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    handlers=[logging.StreamHandler()]
 )
 
-FILE_CATEGORIES = {
-    "Images": ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.webp', '.tiff'],
-    "Documents": ['.pdf', '.doc', '.docx', '.txt', '.rtf', '.xls', '.xlsx', '.ppt', '.pptx', '.csv', '.md'],
-    "Audio": ['.mp3', '.wav', '.aac', '.flac', '.ogg', '.m4a'],
-    "Video": ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm'],
-    "Archives": ['.zip', '.rar', '.tar', '.gz', '.7z', '.bz2'],
-    "Scripts_and_Code": ['.py', '.sh', '.bat', '.js', '.html', '.css', '.json', '.xml', '.cpp', '.c', '.java'],
-    "Executables": ['.exe', '.msi', '.apk', '.dmg', '.deb', '.rpm']
-}
+class RobustWebScraper:
+    """
+    Web Scraper professionale e corretto (Fixed Web Scraper).
+    Risolve problemi comuni come:
+    - Blocchi IP (tramite User-Agent e Sessioni)
+    - Timeout infiniti (tramite parametro timeout)
+    - Errori di parsing (tramite try/except e controlli None)
+    - Gestione della paginazione
+    """
 
-def get_category(extension: str) -> str:
-    for category, extensions in FILE_CATEGORIES.items():
-        if extension.lower() in extensions:
-            return category
-    return "Others"
+    def __init__(self, base_url: str, output_file: str = 'scraped_data.csv'):
+        self.base_url = base_url
+        self.output_file = output_file
+        self.scraped_data: List[Dict[str, str]] = []
+        
+        # Utilizzo di requests.Session() per mantenere i cookie e riutilizzare le connessioni TCP
+        self.session = requests.Session()
+        
+        # Aggiunta di headers standard per evitare l'errore 403 Forbidden
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+        })
 
-def organize_directory(target_dir: str) -> None:
-    base_dir = Path(target_dir)
-
-    if not base_dir.exists() or not base_dir.is_dir():
-        logging.error(f"The directory '{target_dir}' does not exist or is not a valid directory.")
-        return
-
-    logging.info(f"Starting automation: Organizing directory '{base_dir.resolve()}'")
-
-    moved_count = 0
-    error_count = 0
-
-    for file_path in base_dir.iterdir():
-        if file_path.is_file():
-            if file_path.name.startswith('.') or file_path.name == Path(__file__).name:
-                continue
-
-            category = get_category(file_path.suffix)
-            category_dir = base_dir / category
-
-            try:
-                category_dir.mkdir(exist_ok=True)
-                target_path = category_dir / file_path.name
-
-                counter = 1
+    def fetch_page(self, url: str) -> Optional[str]:
+        """Effettua la richiesta HTTP con gestione degli errori e timeout."""
+        try:
+            logging.info(f"Fetching URL: {url}")
+            response = self.session.get(url, timeout=15)
+            response.raise_for_status()  # Solleva un'eccezione per codici HTTP 4xx/5xx
+            return response.text
+        except requests.exceptions.HTTPError as http_err:
+            logging.error(f"HTTP error occurred: {http_err}")
+        except requests.exceptions.ConnectionError as conn_err:
+            logging.
