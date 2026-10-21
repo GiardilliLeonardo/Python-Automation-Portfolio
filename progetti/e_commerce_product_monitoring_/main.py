@@ -11,4 +11,4 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 class EcommerceMonitor:
     def __init__(self, url, target_price):
         self.url = url
-        self.
+        self.target_price
