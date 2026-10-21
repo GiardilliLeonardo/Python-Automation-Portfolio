@@ -1,4 +1,4 @@
-# Guida all'avvio
-Assicurati di aver installato le eventuali dipendenze necessarie.
-Apri il terminale in questa directory ed esegui il comando: `python nome_file.py` *(sostituisci con il tuo comando)*.
-Il programma si avvierà immediatamente mostrando l'output a schermo.
+# Avvio Rapido
+1. Apri il terminale nella root del progetto.
+2. Installa le eventuali dipendenze (es. `npm install` o `pip install -r requirements.txt`).
+3. Avvia il file eseguendo il comando: `python main.py` (sostituisci con il tuo file/ambiente).
