@@ -1,4 +1,4 @@
-# Avvio Rapido
-1. Apri il terminale nella directory del progetto.
-2. Installa le eventuali dipendenze necessarie (es. `npm install` o `pip install`).
-3. Avvia il file eseguendo il comando: `node nome_file.js` (o `python nome_file.py`).
+# Avvio del Progetto
+1. Apri il terminale e naviga nella cartella del progetto.
+2. Installa le eventuali dipendenze (es. `npm install` o `pip install -r requirements.txt`).
+3. Esegui il file principale con il comando `node nomefile.js` (o `python nomefile.py`).
