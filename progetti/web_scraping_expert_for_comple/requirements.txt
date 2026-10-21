@@ -1,0 +1,8 @@
+cloudscraper
+undetected-chromedriver
+selenium
+playwright
+playwright-stealth
+curl_cffi
+tls-client
+requests
