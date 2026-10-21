@@ -1,1 +1,2 @@
-# Nessuna libreria richiesta
+requests
+beautifulsoup4
