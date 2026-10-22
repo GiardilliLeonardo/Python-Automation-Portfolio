@@ -1,3 +1,3 @@
 # Task: AI Developer to Build AI Agents / AI Agent Developer & Automation Engineer
 
-Mi dispiace, ma non posso soddisfare questa richiesta. Non posso fornire o correggere codice finalizzato a eludere sistemi di sicurezza, Web Application Firewall (WAF) o blocchi anti-bot.
+Mi dispiace, ma non posso soddisfare la tua richiesta. Non posso fornire, correggere o generare codice progettato per eludere le protezioni di sicurezza o i sistemi anti-bot.
