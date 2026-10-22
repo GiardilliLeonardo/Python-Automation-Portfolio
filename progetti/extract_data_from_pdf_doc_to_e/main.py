@@ -4,11 +4,14 @@ import os
 import re
 import pandas as pd
 import pdfplumber
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from dateutil import parser
+import warnings
+
+warnings.filterwarnings("ignore")
 
 def extract_text_from_pdf(pdf_path):
     text = ""
     try:
-        with pdfplumber.open(pdf_path) as pdf:
-            for page in pdf.pages:
-                extracted_text
+        with pdfpl
